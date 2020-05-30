@@ -17,14 +17,18 @@ package validator
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 
-	"github.com/gardener/gardener-extension-provider-aws/pkg/apis/aws"
+	apiaws "github.com/gardener/gardener-extension-provider-aws/pkg/apis/aws"
 	awsvalidation "github.com/gardener/gardener-extension-provider-aws/pkg/apis/aws/validation"
+	"github.com/gardener/gardener-extension-provider-aws/pkg/aws"
 
+	extensionscontroller "github.com/gardener/gardener/extensions/pkg/controller"
 	"github.com/gardener/gardener/pkg/apis/core"
 	gardencorev1beta1 "github.com/gardener/gardener/pkg/apis/core/v1beta1"
 	kutil "github.com/gardener/gardener/pkg/utils/kubernetes"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
@@ -147,10 +151,14 @@ func (v *Shoot) validateShootCreation(ctx context.Context, shoot *core.Shoot) er
 		return err
 	}
 
+	if err := v.validateCloudProviderCredentials(ctx, shoot); err != nil {
+		return err
+	}
+
 	return v.validateShoot(ctx, shoot)
 }
 
-func (v *Shoot) validateAgainstCloudProfile(ctx context.Context, shoot *core.Shoot, infraConfig *aws.InfrastructureConfig, fldPath *field.Path) error {
+func (v *Shoot) validateAgainstCloudProfile(ctx context.Context, shoot *core.Shoot, infraConfig *apiaws.InfrastructureConfig, fldPath *field.Path) error {
 	cloudProfile := &gardencorev1beta1.CloudProfile{}
 	if err := v.client.Get(ctx, kutil.Key(shoot.Spec.CloudProfileName), cloudProfile); err != nil {
 		return err
@@ -158,6 +166,38 @@ func (v *Shoot) validateAgainstCloudProfile(ctx context.Context, shoot *core.Sho
 
 	if errList := awsvalidation.ValidateInfrastructureConfigAgainstCloudProfile(infraConfig, shoot, cloudProfile, fldPath); len(errList) != 0 {
 		return errList.ToAggregate()
+	}
+
+	return nil
+}
+
+func (v *Shoot) validateCloudProviderCredentials(ctx context.Context, shoot *core.Shoot) error {
+	secretBinding := &gardencorev1beta1.SecretBinding{}
+	if err := v.client.Get(ctx, kutil.Key(shoot.Namespace, shoot.Spec.SecretBindingName), secretBinding); err != nil {
+		return err
+	}
+
+	secret, err := extensionscontroller.GetSecretByReference(ctx, v.client, &secretBinding.SecretRef)
+	if err != nil {
+		return err
+	}
+
+	if err := validateCloudProviderSecret(secret); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateCloudProviderSecret(secret *corev1.Secret) error {
+	_, ok := secret.Data[aws.AccessKeyID]
+	if !ok {
+		return fmt.Errorf("missing %q field in secret", aws.AccessKeyID)
+	}
+
+	_, ok = secret.Data[aws.SecretAccessKey]
+	if !ok {
+		return fmt.Errorf("missing %q field in secret", aws.SecretAccessKey)
 	}
 
 	return nil

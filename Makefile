@@ -59,7 +59,7 @@ start-validator:
 		./cmd/$(EXTENSION_PREFIX)-$(VALIDATOR_NAME) \
 		--webhook-config-server-host=0.0.0.0 \
 		--webhook-config-server-port=9443 \
-		--webhook-config-cert-dir=./example/validator-aws-certs
+		--webhook-config-cert-dir=./example/validator-aws-certs2
 
 #################################################################
 # Rules related to binary build, Docker image build and release #
