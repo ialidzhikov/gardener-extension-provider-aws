@@ -176,16 +176,11 @@ func (b *Botanist) WaitUntilKubeAPIServerReady(ctx context.Context) error {
 	})
 }
 
-// WaitUntilTunnelConnectionExists waits until a port forward connection to the tunnel pod (vpn-shoot or konnectivity-agent) in the kube-system
+// WaitUntilVPNConnectionExists waits until a port forward connection to the vpn-shoot pod in the kube-system
 // namespace of the Shoot cluster can be established.
-func (b *Botanist) WaitUntilTunnelConnectionExists(ctx context.Context) error {
+func (b *Botanist) WaitUntilVPNConnectionExists(ctx context.Context) error {
 	return retry.UntilTimeout(ctx, 5*time.Second, 900*time.Second, func(ctx context.Context) (done bool, err error) {
-		tunnelName := common.VPNTunnel
-		if b.Shoot.KonnectivityTunnelEnabled {
-			tunnelName = common.KonnectivityTunnel
-		}
-
-		return b.CheckTunnelConnection(ctx, b.Logger, tunnelName)
+		return b.CheckVPNConnection(ctx, b.Logger)
 	})
 }
 

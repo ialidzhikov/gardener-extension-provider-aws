@@ -32,6 +32,7 @@ import (
 	kutil "github.com/gardener/gardener/pkg/utils/kubernetes"
 	"github.com/gardener/gardener/pkg/utils/secrets"
 
+	"gopkg.in/yaml.v2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -150,32 +151,37 @@ func (b *Botanist) generateOriginalConfig() (map[string]interface{}, error) {
 func (b *Botanist) deployOperatingSystemConfigsForWorker(ctx context.Context, machineTypes []gardencorev1beta1.MachineType, machineImage *gardencorev1beta1.ShootMachineImage, downloaderConfig, originalConfig map[string]interface{}, worker gardencorev1beta1.Worker) (*shoot.OperatingSystemConfigs, error) {
 	secretName := b.Shoot.ComputeCloudConfigSecretName(worker.Name)
 
-	var (
-		criNamesConfig = map[string]interface{}{
-			"containerd": extensionsv1alpha1.CRINameContainerD,
-		}
-		criConfig = map[string]interface{}{
-			"containerRuntimesBinaryPath": extensionsv1alpha1.ContainerDRuntimeContainersBinFolder,
-			"names":                       criNamesConfig,
-		}
-		osc = map[string]interface{}{
-			"type":                       machineImage.Name,
-			"purpose":                    extensionsv1alpha1.OperatingSystemConfigPurposeReconcile,
-			"reloadConfigFilePath":       common.CloudConfigFilePath,
-			"secretName":                 secretName,
-			"sshKey":                     string(b.Secrets[v1beta1constants.SecretNameSSHKeyPair].Data[secrets.DataKeySSHAuthorizedKeys]),
-			"cri":                        criConfig,
-			"annotationCurrentTimestamp": time.Now().UTC().String(),
-		}
-	)
+	downloaderConfig["secretName"] = secretName
 
-	if machineImage.ProviderConfig != nil && machineImage.ProviderConfig.Raw != nil {
-		downloaderConfig["providerConfig"] = string(machineImage.ProviderConfig.Raw)
-		osc["providerConfig"] = string(machineImage.ProviderConfig.Raw)
+	var customization = map[string]interface{}{}
+	if machineImage.ProviderConfig != nil {
+		err := yaml.Unmarshal(machineImage.ProviderConfig.Raw, &customization)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	downloaderConfig["secretName"] = secretName
-	originalConfig["osc"] = osc
+	sshKey := b.Secrets[v1beta1constants.SecretNameSSHKeyPair].Data[secrets.DataKeySSHAuthorizedKeys]
+
+	criNamesConfig := map[string]interface{}{
+		"containerd": extensionsv1alpha1.CRINameContainerD,
+	}
+
+	criConfig := map[string]interface{}{
+		"containerRuntimesBinaryPath": extensionsv1alpha1.ContainerDRuntimeContainersBinFolder,
+		"names":                       criNamesConfig,
+	}
+
+	originalConfig["osc"] = map[string]interface{}{
+		"type":                       machineImage.Name,
+		"purpose":                    extensionsv1alpha1.OperatingSystemConfigPurposeReconcile,
+		"reloadConfigFilePath":       common.CloudConfigFilePath,
+		"secretName":                 secretName,
+		"customization":              customization,
+		"sshKey":                     string(sshKey),
+		"cri":                        criConfig,
+		"annotationCurrentTimestamp": time.Now().UTC().String(),
+	}
 
 	if data := worker.CABundle; data != nil {
 		if existingCABundle, ok := originalConfig["caBundle"]; ok {
