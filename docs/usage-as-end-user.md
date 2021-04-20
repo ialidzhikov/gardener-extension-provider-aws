@@ -40,11 +40,6 @@ Please make sure that the provided credentials have the correct privileges. You 
     "Statement": [
       {
         "Effect": "Allow",
-        "Action": "autoscaling:*",
-        "Resource": "*"
-      },
-      {
-        "Effect": "Allow",
         "Action": "ec2:*",
         "Resource": "*"
       },
